@@ -1,0 +1,67 @@
+# =====================================================================
+# AUTO-DETECT & ENABLE REMOTE DESKTOP (RDP) + DISABLE NLA (IF NEEDED)
+# =====================================================================
+
+Write-Host "`n=== Remote Desktop Configuration Script ===`n"
+
+# --- Registry Paths ---
+$RDPKey = 'HKLM:\System\CurrentControlSet\Control\Terminal Server'
+$NLAKey = 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
+
+# --- Get Current Settings ---
+$fDenyTSConnections = (Get-ItemProperty -Path $RDPKey -Name fDenyTSConnections -ErrorAction SilentlyContinue).fDenyTSConnections
+$UserAuth = (Get-ItemProperty -Path $NLAKey -Name UserAuthentication -ErrorAction SilentlyContinue).UserAuthentication
+
+# --- Interpret Current State ---
+if ($fDenyTSConnections -eq 1) {
+    Write-Host "❌ Remote Desktop is currently DISABLED."
+} elseif ($fDenyTSConnections -eq 0) {
+    Write-Host "✅ Remote Desktop is currently ENABLED."
+} else {
+    Write-Host "⚠️ Remote Desktop state unknown (registry value missing)."
+}
+
+if ($UserAuth -eq 1) {
+    Write-Host "🔒 Network Level Authentication (NLA) is currently ENABLED."
+} elseif ($UserAuth -eq 0) {
+    Write-Host "🔓 NLA is currently DISABLED."
+} else {
+    Write-Host "⚠️ NLA state unknown (registry value missing)."
+}
+
+# --- Enable RDP if needed ---
+if ($fDenyTSConnections -ne 0) {
+    Write-Host "`n➡️ Enabling Remote Desktop..."
+    Set-ItemProperty -Path $RDPKey -Name fDenyTSConnections -Value 0
+} else {
+    Write-Host "`n✔️ Remote Desktop already enabled."
+}
+
+# --- Disable NLA if enabled ---
+if ($UserAuth -ne 0) {
+    Write-Host "➡️ Disabling Network Level Authentication..."
+    Set-ItemProperty -Path $NLAKey -Name UserAuthentication -Value 0
+} else {
+    Write-Host "✔️ NLA already disabled."
+}
+
+# --- Enable Windows Firewall Rule ---
+Write-Host "`n➡️ Ensuring Remote Desktop firewall rule is enabled..."
+Enable-NetFirewallRule -DisplayGroup "Remote Desktop" | Out-Null
+
+# --- Restart the RDP service to apply changes ---
+Write-Host "➡️ Restarting Remote Desktop Services..."
+Restart-Service -Name TermService -Force
+
+# --- Final Check ---
+$fDenyTSConnections = (Get-ItemProperty -Path $RDPKey -Name fDenyTSConnections).fDenyTSConnections
+$UserAuth = (Get-ItemProperty -Path $NLAKey -Name UserAuthentication).UserAuthentication
+
+Write-Host "`n=== FINAL STATUS ==="
+Write-Host "Remote Desktop: " -NoNewline
+if ($fDenyTSConnections -eq 0) { Write-Host "✅ ENABLED" -ForegroundColor Green } else { Write-Host "❌ DISABLED" -ForegroundColor Red }
+
+Write-Host "Network Level Authentication: " -NoNewline
+if ($UserAuth -eq 0) { Write-Host "🔓 DISABLED" -ForegroundColor Yellow } else { Write-Host "🔒 ENABLED" -ForegroundColor Green }
+
+Write-Host "`n✅ All done! Remote Desktop is ready to accept connections."
